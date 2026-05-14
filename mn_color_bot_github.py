@@ -134,7 +134,8 @@ def main():
             f"🎨 <b>Minnesota Daily Color</b>\n\n"
             f"📅 Date: {color_info['date'] or 'Today'}\n"
             f"🎯 Color: <b>{color_info['color']}</b>\n"
-            f"⏰ Time: {datetime.now().strftime('%H:%M')} CST"
+            f"⏰ Time: {datetime.now().strftime('%H:%M')} CST\n\n"
+            f"🔗 <a href='https://hpsp.hlb.state.mn.us/'>View on HPSP website</a>"
         )
         send_telegram_message(message)
 
@@ -145,7 +146,8 @@ def main():
         message = (
             f"⚠️ <b>MN Color Check Failed</b>\n"
             f"Could not fetch today's color\n"
-            f"Time: {datetime.now().strftime('%H:%M')} CST"
+            f"Time: {datetime.now().strftime('%H:%M')} CST\n\n"
+            f"🔗 <a href='https://hpsp.hlb.state.mn.us/'>Check manually on HPSP website</a>"
         )
         send_telegram_message(message)
 
