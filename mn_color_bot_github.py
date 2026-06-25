@@ -38,57 +38,117 @@ def send_telegram_message(message):
         print(f"Error sending Telegram message: {e}")
         return None
 
-def get_mn_color():
-    """Fetch the current color from HPSP website"""
+def get_mn_color(retry_count=3):
+    """Fetch the current color from HPSP website with retry logic"""
     url = "https://hpsp.hlb.state.mn.us/"
 
-    # Configure Chrome options for headless mode
-    options = Options()
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--headless')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--window-size=1920,1080')
+    for attempt in range(retry_count):
+        if attempt > 0:
+            print(f"Retry attempt {attempt + 1} of {retry_count}...")
+            time.sleep(5)  # Wait before retry
 
-    driver = None
+        # Configure Chrome options to avoid bot detection
+        options = Options()
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        # Remove headless to appear more like a real browser
+        # options.add_argument('--headless')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--window-size=1920,1080')
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+        options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-    try:
-        print("Setting up Chrome driver...")
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=options)
+        driver = None
 
-        print(f"Loading {url}...")
-        driver.get(url)
-        time.sleep(15)  # Wait for page to fully load
+        try:
+            print("Setting up Chrome driver...")
+            # Direct path to ChromeDriver to avoid webdriver-manager issues
+            chromedriver_path = os.path.expanduser("~/.wdm/drivers/chromedriver/mac64/149.0.7827.155/chromedriver-mac-arm64/chromedriver")
+            if not os.path.exists(chromedriver_path):
+                # Fallback to webdriver-manager
+                chromedriver_path = ChromeDriverManager().install()
+                # Fix the path if it's pointing to the wrong file
+                if chromedriver_path.endswith("THIRD_PARTY_NOTICES.chromedriver"):
+                    chromedriver_path = chromedriver_path.replace("THIRD_PARTY_NOTICES.chromedriver", "chromedriver")
 
-        # Get page text
-        body = driver.find_element(By.TAG_NAME, "body")
-        page_text = body.text if body else ""
+            service = Service(chromedriver_path)
+            driver = webdriver.Chrome(service=service, options=options)
 
-        # Look for color phrase
-        lines = page_text.split('\n')
+            # Execute JavaScript to make browser appear more human-like
+            driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+                'source': '''
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    })
+                '''
+            })
 
-        for i, line in enumerate(lines):
-            if "The colors on" in line and ":" in line:
-                date_str = line.split("The colors on")[-1].split(":")[0].strip()
+            print(f"Loading {url}...")
+            driver.get(url)
+            time.sleep(20)  # Wait longer for page to fully load
 
-                # Get the next non-empty line as the color
-                for j in range(i+1, min(i+10, len(lines))):
-                    if lines[j].strip() and lines[j].strip() != ':':
-                        color = lines[j].strip()
-                        print(f"✅ Found color: {color} for {date_str}")
-                        return {'color': color, 'date': date_str}
+            # Save screenshot for debugging
+            driver.save_screenshot('/tmp/mn_page_screenshot.png')
+            print("Screenshot saved to /tmp/mn_page_screenshot.png")
 
-        print("❌ No color found on page")
-        return {'color': None, 'date': None}
+            # Get page text
+            body = driver.find_element(By.TAG_NAME, "body")
+            page_text = body.text if body else ""
 
-    except Exception as e:
-        print(f"Error fetching color: {e}")
-        return {'color': None, 'date': None}
+            # Debug: Save page content to file
+            with open('/tmp/mn_page_content.txt', 'w') as f:
+                f.write(page_text)
+            print(f"Page content saved to /tmp/mn_page_content.txt (length: {len(page_text)} chars)")
 
-    finally:
-        if driver:
-            driver.quit()
+            # Check if page is blocked
+            if "bot" in page_text.lower() or "captcha" in page_text.lower() or len(page_text) < 100:
+                print(f"Bot detection or empty page on attempt {attempt + 1}")
+                if driver:
+                    driver.quit()
+                continue  # Try again
+
+            # Look for color phrase
+            lines = page_text.split('\n')
+
+            for i, line in enumerate(lines):
+                if "The colors on" in line and ":" in line:
+                    date_str = line.split("The colors on")[-1].split(":")[0].strip()
+
+                    # Get all colors (could be multiple lines)
+                    colors = []
+                    for j in range(i+1, min(i+10, len(lines))):
+                        line_text = lines[j].strip()
+                        if line_text and line_text != ':':
+                            # Stop if we hit navigation/login elements
+                            if line_text.lower() in ['login', 'welcome', 'username', 'password', 'navigate']:
+                                break
+                            colors.append(line_text)
+                        elif not line_text and colors:
+                            # Empty line after colors, stop collecting
+                            break
+
+                    if colors:
+                        color_str = " and ".join(colors)
+                        print(f"✅ Found colors: {color_str} for {date_str}")
+                        if driver:
+                            driver.quit()
+                        return {'color': color_str, 'date': date_str}
+
+            print(f"No color found on attempt {attempt + 1}")
+            if driver:
+                driver.quit()
+
+        except Exception as e:
+            print(f"Error on attempt {attempt + 1}: {e}")
+            if driver:
+                driver.quit()
+            continue
+
+    # All retries failed
+    print("❌ No color found after all retries")
+    return {'color': None, 'date': None}
 
 def log_color_to_csv(color, date_str):
     """Log color to CSV file"""
