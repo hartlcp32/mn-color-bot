@@ -60,6 +60,15 @@ def get_mn_color(retry_count=3):
         options.add_experimental_option('useAutomationExtension', False)
         options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
+        # Reuse a persistent, human-blessed Chrome profile so the site's bot
+        # protection (Radware/perfdrive) treats us as a returning real user.
+        # Seed it once by hand via seed_profile.sh, then this reuses its cookies.
+        profile_dir = os.environ.get(
+            'CHROME_PROFILE_DIR',
+            os.path.expanduser('~/Library/Application Support/mn-color-bot-chrome'))
+        if profile_dir:
+            options.add_argument(f'--user-data-dir={profile_dir}')
+
         driver = None
 
         try:

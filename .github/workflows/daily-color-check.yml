@@ -1,11 +1,11 @@
 name: Daily MN Color Check
 
 on:
-  schedule:
-    # Runs at 9:00 AM CST (3:00 PM UTC) every weekday
-    - cron: '0 14 * * 1-5'
-
-  # Allows manual trigger from GitHub Actions tab
+  # NOTE: The scheduled cloud run is DISABLED. The MN HPSP site is now behind
+  # Radware/perfdrive bot protection that blocks GitHub's datacenter browsers,
+  # so cloud runs always failed. The bot now runs LOCALLY on the Mac via a
+  # launchd job (com.hartley.mncolorbot) using a human-seeded Chrome profile.
+  # See botworks.md. Manual trigger kept only for testing.
   workflow_dispatch:
 
 jobs:
